@@ -100,27 +100,38 @@ if len(agg_hands) == 4:
     agg_hands = [h for h in agg_hands if h['length'] > min_length + 1e-3]  # add small epsilon for float safety
     print("Dropped shortest cluster.")
 
-# Now assign hands as before
-agg_hands = sorted(agg_hands, key=lambda h: h['length'], reverse=True)
+# Compute angle deviation for each cluster
+for h in agg_hands:
+    h['angle_std'] = 0
+for idx, cluster in enumerate(clusters):
+    if len(cluster) > 1:
+        std = np.std([h['angle'] for h in cluster])
+        # Find the corresponding agg_hand by avg_angle
+        for agg in agg_hands:
+            if abs(agg['angle'] - np.mean([h['angle'] for h in cluster])) < 1e-3:
+                agg['angle_std'] = std
 
-if len(agg_hands) >= 2:
-    minute = agg_hands[0]
-    hour = agg_hands[1]
-    second = agg_hands[2] if len(agg_hands) > 2 else None
+# Assign hands:
+# - Second hand: smallest angle_std
+# - Minute hand: longest (excluding second hand)
+# - Hour hand: remaining
 
-    print(f"Minute hand angle: {minute['angle']:.1f}")
-    print(f"Hour hand angle: {hour['angle']:.1f}")
-    if second:
-        print(f"Second hand angle: {second['angle']:.1f}")
+agg_hands = sorted(agg_hands, key=lambda h: h['angle_std'])
+second = agg_hands[0]
+rest = [h for h in agg_hands if h != second]
+minute = max(rest, key=lambda h: h['length'])
+hour = min(rest, key=lambda h: h['length'])
 
-    def angle_to_time(angle, divisions):
-        return (angle / 360) * divisions
+print(f"Minute hand angle: {minute['angle']:.1f}")
+print(f"Hour hand angle: {hour['angle']:.1f}")
+print(f"Second hand angle: {second['angle']:.1f}")
 
-    minute_value = angle_to_time(minute['angle'], 60)
-    hour_value = angle_to_time(hour['angle'], 12)
-    print(f"Estimated time: {int(hour_value)%12:02d}:{int(minute_value):02d}")
-else:
-    print("Not enough hands detected after filtering.")
+def angle_to_time(angle, divisions):
+    return (angle / 360) * divisions
+
+minute_value = angle_to_time(minute['angle'], 60)
+hour_value = angle_to_time(hour['angle'], 12)
+print(f"Estimated time: {int(hour_value)%12:02d}:{int(minute_value):02d}")
 
 # Show result
 cv2.imshow('Clock Reader', img)
