@@ -22,30 +22,33 @@ else:
 
 # Edge detection
 edges = cv2.Canny(blur, 30, 100, apertureSize=3)  # Lowered thresholds for more edges
-cv2.imshow('Edges', edges)
+# cv2.imshow('Edges', edges)
 
-# Detect lines (potential hands)
-lines = cv2.HoughLinesP(
-    edges, 1, np.pi / 180, threshold=60,  # Lowered threshold for more lines
-    minLineLength=radius//2, maxLineGap=30
-)
-if lines is not None:
-    print(f"Detected {len(lines)} lines.")
-    hand_lines = []
-    for idx, line in enumerate(lines):
-        x1, y1, x2, y2 = line[0]
-        # Only keep lines that pass near the center (hand candidates)
-        dist1 = np.hypot(x1 - center[0], y1 - center[1])
-        dist2 = np.hypot(x2 - center[0], y2 - center[1])
-        if dist1 < radius * 0.2 or dist2 < radius * 0.2:
-            hand_lines.append(line[0])
-            cv2.line(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
-            print(f"Line {idx}: ({x1},{y1})-({x2},{y2}) [kept]")
-        else:
-            print(f"Line {idx}: ({x1},{y1})-({x2},{y2}) [discarded]")
-    print(f"Kept {len(hand_lines)} hand candidates.")
-else:
-    print("No lines detected.")
+all_lines = []
+for edge_img, label in [(edges, "original")]:
+    lines = cv2.HoughLinesP(
+        edge_img, 1, np.pi / 180, threshold=35,
+        minLineLength=int(radius * 0.1),
+        maxLineGap=10
+    )
+    if lines is not None:
+        print(f"[{label}] Detected {len(lines)} lines.")
+        for idx, line in enumerate(lines):
+            x1, y1, x2, y2 = line[0]
+            dist1 = np.hypot(x1 - center[0], y1 - center[1])
+            dist2 = np.hypot(x2 - center[0], y2 - center[1])
+            length = np.hypot(x2 - x1, y2 - y1)
+            print(f"[{label}] Line {idx}: ({x1},{y1})-({x2},{y2}), length={length:.1f}, dist1={dist1:.1f}, dist2={dist2:.1f}")
+            if dist1 < radius * 0.3 or dist2 < radius * 0.3:
+                all_lines.append((x1, y1, x2, y2, length, label))
+                cv2.line(img, (x1, y1), (x2, y2), (255, 0, 0) if label == "dilated" else (0, 0, 255), 1)
+                print(f"  -> [kept]")
+            else:
+                print(f"  -> [discarded]")
+    else:
+        print(f"[{label}] No lines detected.")
+
+print(f"Total kept hand candidates: {len(all_lines)}")
 
 # Show result
 cv2.imshow('Clock Reader', img)
