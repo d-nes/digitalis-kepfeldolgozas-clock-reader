@@ -93,7 +93,7 @@ for idx, cluster in enumerate(clusters):
     print(f"Cluster {idx}: avg_angle={avg_angle:.1f}, total_length={total_length:.1f}, count={len(cluster)}")
 
 # Sort by total length descending (minute > hour > second)
-agg_hands = sorted(agg_hands, key=lambda h: h['length'], reverse=False)
+agg_hands = sorted(agg_hands, key=lambda h: h['length'], reverse=True)
 if len(agg_hands) >= 2:
     minute = agg_hands[0]
     hour = agg_hands[1]
@@ -111,6 +111,68 @@ if len(agg_hands) >= 2:
         print(f"Estimated time: {int(hour_value)%12:02d}:{int(minute_value):02d}")
 else:
     print("Not enough hands detected after clustering.")
+
+# Merge closest clusters until only 3 remain
+def merge_closest_clusters(agg_hands, target_count=3):
+    while len(agg_hands) > target_count:
+        # Find pair with smallest angle difference
+        min_diff = 360
+        min_i, min_j = 0, 1
+        for i in range(len(agg_hands)):
+            for j in range(i+1, len(agg_hands)):
+                diff = abs(agg_hands[i]['angle'] - agg_hands[j]['angle'])
+                diff = min(diff, 360 - diff)
+                if diff < min_diff:
+                    min_diff = diff
+                    min_i, min_j = i, j
+        # Merge clusters i and j
+        c1, c2 = agg_hands[min_i], agg_hands[min_j]
+        total_length = c1['length'] + c2['length']
+        avg_angle = (c1['angle'] * c1['length'] + c2['angle'] * c2['length']) / total_length
+        merged = {
+            'angle': avg_angle,
+            'length': total_length,
+            'count': c1['count'] + c2['count']
+        }
+        # Remove and insert merged
+        new_agg = [agg_hands[k] for k in range(len(agg_hands)) if k not in (min_i, min_j)]
+        new_agg.append(merged)
+        agg_hands = new_agg
+    return agg_hands
+
+agg_hands = merge_closest_clusters(agg_hands, target_count=3)
+print(f"After merging, {len(agg_hands)} clusters remain.")
+for idx, h in enumerate(agg_hands):
+    print(f"Cluster {idx}: avg_angle={h['angle']:.1f}, total_length={h['length']:.1f}, count={h['count']}")
+
+agg_hands = sorted(agg_hands, key=lambda h: h['length'], reverse=True)
+
+if len(agg_hands) >= 2:
+    # Minute hand: longest
+    minute = agg_hands[0]
+    # Hour hand: closest angle to minute hand (but not the minute hand itself)
+    hour_candidates = agg_hands[1:]
+    hour = min(hour_candidates, key=lambda h: min(abs(h['angle'] - minute['angle']), 360 - abs(h['angle'] - minute['angle'])))
+    # Second hand: the remaining cluster (if present)
+    second = None
+    if len(agg_hands) > 2:
+        second_candidates = [h for h in agg_hands[1:] if h != hour]
+        if second_candidates:
+            second = max(second_candidates, key=lambda h: h['length'])
+
+    print(f"Minute hand angle: {minute['angle']:.1f}")
+    print(f"Hour hand angle: {hour['angle']:.1f}")
+    if second:
+        print(f"Second hand angle: {second['angle']:.1f}")
+
+    def angle_to_time(angle, divisions):
+        return (angle / 360) * divisions
+
+    minute_value = angle_to_time(minute['angle'], 60)
+    hour_value = angle_to_time(hour['angle'], 12)
+    print(f"Estimated time: {int(hour_value)%12:02d}:{int(minute_value):02d}")
+else:
+    print("Not enough hands detected after merging.")
 
 # Show result
 cv2.imshow('Clock Reader', img)
