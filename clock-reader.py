@@ -92,38 +92,21 @@ for idx, cluster in enumerate(clusters):
     agg_hands.append({'angle': avg_angle, 'length': total_length, 'count': len(cluster)})
     print(f"Cluster {idx}: avg_angle={avg_angle:.1f}, total_length={total_length:.1f}, count={len(cluster)}")
 
-# Sort by total length descending (minute > hour > second)
-agg_hands = sorted(agg_hands, key=lambda h: h['length'], reverse=True)
-if len(agg_hands) >= 2:
-    minute = agg_hands[0]
-    hour = agg_hands[1]
-    print(f"Minute hand angle: {minute['angle']:.1f}")
-    print(f"Hour hand angle: {hour['angle']:.1f}")
-    if len(agg_hands) > 2:
-        second = agg_hands[2]
-        print(f"Second hand angle: {second['angle']:.1f}")
-
-        def angle_to_time(angle, divisions):
-            return (angle / 360) * divisions
-
-        minute_value = angle_to_time(minute['angle'], 60)
-        hour_value = angle_to_time(hour['angle'], 12)
-        print(f"Estimated time: {int(hour_value)%12:02d}:{int(minute_value):02d}")
-else:
-    print("Not enough hands detected after clustering.")
-
-# Merge closest clusters until only 3 remain
-def merge_closest_clusters(agg_hands, target_count=3):
+# Merge clusters with similar hand lengths until only 3 remain
+def merge_similar_length_clusters(agg_hands, target_count=3, length_thresh=0.25):
+    """
+    Merge clusters with the most similar lengths (relative difference < length_thresh)
+    until only target_count clusters remain.
+    """
     while len(agg_hands) > target_count:
-        # Find pair with smallest angle difference
-        min_diff = 360
+        min_rel_diff = float('inf')
         min_i, min_j = 0, 1
         for i in range(len(agg_hands)):
             for j in range(i+1, len(agg_hands)):
-                diff = abs(agg_hands[i]['angle'] - agg_hands[j]['angle'])
-                diff = min(diff, 360 - diff)
-                if diff < min_diff:
-                    min_diff = diff
+                l1, l2 = agg_hands[i]['length'], agg_hands[j]['length']
+                rel_diff = abs(l1 - l2) / max(l1, l2)
+                if rel_diff < min_rel_diff:
+                    min_rel_diff = rel_diff
                     min_i, min_j = i, j
         # Merge clusters i and j
         c1, c2 = agg_hands[min_i], agg_hands[min_j]
@@ -134,26 +117,21 @@ def merge_closest_clusters(agg_hands, target_count=3):
             'length': total_length,
             'count': c1['count'] + c2['count']
         }
-        # Remove and insert merged
-        new_agg = [agg_hands[k] for k in range(len(agg_hands)) if k not in (min_i, min_j)]
-        new_agg.append(merged)
-        agg_hands = new_agg
+        agg_hands = [agg_hands[k] for k in range(len(agg_hands)) if k not in (min_i, min_j)]
+        agg_hands.append(merged)
     return agg_hands
 
-agg_hands = merge_closest_clusters(agg_hands, target_count=3)
+# Use the new merging function
+agg_hands = merge_similar_length_clusters(agg_hands, target_count=3, length_thresh=0.25)
 print(f"After merging, {len(agg_hands)} clusters remain.")
 for idx, h in enumerate(agg_hands):
     print(f"Cluster {idx}: avg_angle={h['angle']:.1f}, total_length={h['length']:.1f}, count={h['count']}")
 
 agg_hands = sorted(agg_hands, key=lambda h: h['length'], reverse=True)
-
 if len(agg_hands) >= 2:
-    # Minute hand: longest
     minute = agg_hands[0]
-    # Hour hand: closest angle to minute hand (but not the minute hand itself)
     hour_candidates = agg_hands[1:]
     hour = min(hour_candidates, key=lambda h: min(abs(h['angle'] - minute['angle']), 360 - abs(h['angle'] - minute['angle'])))
-    # Second hand: the remaining cluster (if present)
     second = None
     if len(agg_hands) > 2:
         second_candidates = [h for h in agg_hands[1:] if h != hour]
@@ -172,7 +150,7 @@ if len(agg_hands) >= 2:
     hour_value = angle_to_time(hour['angle'], 12)
     print(f"Estimated time: {int(hour_value)%12:02d}:{int(minute_value):02d}")
 else:
-    print("Not enough hands detected after merging.")
+    print("Not enough hands detected after clustering.")
 
 # Show result
 cv2.imshow('Clock Reader', img)
