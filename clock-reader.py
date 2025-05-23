@@ -1,30 +1,31 @@
 import cv2
 import numpy as np
-from collections import defaultdict
 
-# Load image
+# Load and preprocess image
 img = cv2.imread('test-images/faliora.jpg')
 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 blur = cv2.GaussianBlur(gray, (7, 7), 0)
 
 # Detect clock face (circle)
-circles = cv2.HoughCircles(blur, cv2.HOUGH_GRADIENT, dp=1.2, minDist=100,
-                           param1=50, param2=30, minRadius=100, maxRadius=0)
+circles = cv2.HoughCircles(
+    blur, cv2.HOUGH_GRADIENT, dp=1.2, minDist=100,
+    param1=50, param2=30, minRadius=100, maxRadius=0
+)
 if circles is not None:
     circles = np.uint16(np.around(circles))
-    for i in circles[0, :1]:  # Only use the largest/first circle
-        center = (i[0], i[1])
-        radius = i[2]
-        print(f"Detected clock face center: {center}, radius: {radius}")
-        cv2.circle(img, center, radius, (0, 255, 0), 2)
+    i = circles[0, 0]  # Use the largest/first circle
+    center = (i[0], i[1])
+    radius = i[2]
+    print(f"Detected clock face center: {center}, radius: {radius}")
+    cv2.circle(img, center, radius, (0, 255, 0), 2)
 else:
     print("No clock face detected.")
     exit()
 
 # Edge detection
 edges = cv2.Canny(blur, 30, 100, apertureSize=3)
-# cv2.imshow('Edges', edges)
 
+# Detect lines (potential clock hands)
 all_lines = []
 lines = cv2.HoughLinesP(
     edges, 1, np.pi / 180, threshold=35,
@@ -39,31 +40,32 @@ if lines is not None:
         dist2 = np.hypot(x2 - center[0], y2 - center[1])
         length = np.hypot(x2 - x1, y2 - y1)
         print(f"Line {idx}: ({x1},{y1})-({x2},{y2}), length={length:.1f}, dist1={dist1:.1f}, dist2={dist2:.1f}")
+        # Keep lines close to the center (likely hands)
         if dist1 < radius * 0.3 or dist2 < radius * 0.3:
             all_lines.append((x1, y1, x2, y2, length))
             cv2.line(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
-            print(f"  -> [kept]")
+            print("  -> [kept]")
         else:
-            print(f"  -> [discarded]")
+            print("  -> [discarded]")
 else:
     print("No lines detected.")
 
 print(f"Total kept hand candidates: {len(all_lines)}")
 
+# Calculate angle and length for each hand candidate
 hand_infos = []
 for (x1, y1, x2, y2, length) in all_lines:
-    # Choose the endpoint farther from the center as the tip
     d1 = np.hypot(x1 - center[0], y1 - center[1])
     d2 = np.hypot(x2 - center[0], y2 - center[1])
     tip = (x1, y1) if d1 > d2 else (x2, y2)
-    # Angle: 0 is up, increases clockwise
     dx = tip[0] - center[0]
     dy = center[1] - tip[1]
-    angle = np.degrees(np.arctan2(dx, dy)) % 360
+    angle = np.degrees(np.arctan2(dx, dy)) % 360  # 0 is up, increases clockwise
     hand_infos.append({'angle': angle, 'length': length, 'tip': tip})
     print(f"Hand candidate: angle={angle:.1f}, length={length:.1f}")
 
 def cluster_lines_by_angle(hand_infos, angle_thresh=10):
+    """Group hand candidates by similar angle."""
     clusters = []
     used = [False] * len(hand_infos)
     for i, h in enumerate(hand_infos):
@@ -84,7 +86,7 @@ def cluster_lines_by_angle(hand_infos, angle_thresh=10):
 clusters = cluster_lines_by_angle(hand_infos, angle_thresh=10)
 print(f"Found {len(clusters)} clusters.")
 
-# For each cluster, compute average angle and average length
+# Aggregate clusters: average angle and length
 agg_hands = []
 for idx, cluster in enumerate(clusters):
     avg_angle = np.mean([h['angle'] for h in cluster])
@@ -92,12 +94,12 @@ for idx, cluster in enumerate(clusters):
     agg_hands.append({'angle': avg_angle, 'length': avg_length, 'count': len(cluster)})
     print(f"Cluster {idx}: avg_angle={avg_angle:.1f}, avg_length={avg_length:.1f}, count={len(cluster)}")
 
-# Sort by total length descending (minute > hour > second)
-agg_hands = sorted(agg_hands, key=lambda h: h['length'], reverse=False)
-# If 4 clusters, drop the shortest
+# Sort by length (ascending: hour < minute < second)
+agg_hands = sorted(agg_hands, key=lambda h: h['length'])
+# If 4 clusters, drop the shortest (likely noise)
 if len(agg_hands) == 4:
     min_length = min(h['length'] for h in agg_hands)
-    agg_hands = [h for h in agg_hands if h['length'] > min_length + 1e-3]  # add small epsilon for float safety
+    agg_hands = [h for h in agg_hands if h['length'] > min_length + 1e-3]
     print("Dropped shortest cluster.")
 
 # Compute angle deviation for each cluster
@@ -106,16 +108,12 @@ for h in agg_hands:
 for idx, cluster in enumerate(clusters):
     if len(cluster) > 1:
         std = np.std([h['angle'] for h in cluster])
-        # Find the corresponding agg_hand by avg_angle
+        avg_angle = np.mean([h['angle'] for h in cluster])
         for agg in agg_hands:
-            if abs(agg['angle'] - np.mean([h['angle'] for h in cluster])) < 1e-3:
+            if abs(agg['angle'] - avg_angle) < 1e-3:
                 agg['angle_std'] = std
 
-# Assign hands:
-# - Second hand: smallest angle_std
-# - Minute hand: longest (excluding second hand)
-# - Hour hand: remaining
-
+# Assign hands based on angle deviation and length
 agg_hands = sorted(agg_hands, key=lambda h: h['angle_std'])
 second = agg_hands[0]
 rest = [h for h in agg_hands if h != second]
@@ -127,6 +125,7 @@ print(f"Hour hand angle: {hour['angle']:.1f}")
 print(f"Second hand angle: {second['angle']:.1f}")
 
 def angle_to_time(angle, divisions):
+    """Convert hand angle to time value (minutes or hours)."""
     return (angle / 360) * divisions
 
 minute_value = angle_to_time(minute['angle'], 60)
