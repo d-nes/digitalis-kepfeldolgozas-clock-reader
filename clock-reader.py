@@ -84,13 +84,13 @@ def cluster_lines_by_angle(hand_infos, angle_thresh=10):
 clusters = cluster_lines_by_angle(hand_infos, angle_thresh=10)
 print(f"Found {len(clusters)} clusters.")
 
-# For each cluster, compute average angle and total length
+# For each cluster, compute average angle and average length
 agg_hands = []
 for idx, cluster in enumerate(clusters):
     avg_angle = np.mean([h['angle'] for h in cluster])
-    total_length = np.sum([h['length'] for h in cluster])
-    agg_hands.append({'angle': avg_angle, 'length': total_length, 'count': len(cluster)})
-    print(f"Cluster {idx}: avg_angle={avg_angle:.1f}, total_length={total_length:.1f}, count={len(cluster)}")
+    avg_length = np.mean([h['length'] for h in cluster])
+    agg_hands.append({'angle': avg_angle, 'length': avg_length, 'count': len(cluster)})
+    print(f"Cluster {idx}: avg_angle={avg_angle:.1f}, avg_length={avg_length:.1f}, count={len(cluster)}")
 
 # Sort by total length descending (minute > hour > second)
 agg_hands = sorted(agg_hands, key=lambda h: h['length'], reverse=False)
