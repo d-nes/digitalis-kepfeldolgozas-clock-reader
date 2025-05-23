@@ -105,13 +105,8 @@ agg_hands = sorted(agg_hands, key=lambda h: h['length'], reverse=True)
 
 if len(agg_hands) >= 2:
     minute = agg_hands[0]
-    hour_candidates = agg_hands[1:]
-    hour = min(hour_candidates, key=lambda h: min(abs(h['angle'] - minute['angle']), 360 - abs(h['angle'] - minute['angle'])))
-    second = None
-    if len(agg_hands) > 2:
-        second_candidates = [h for h in agg_hands[1:] if h != hour]
-        if second_candidates:
-            second = max(second_candidates, key=lambda h: h['length'])
+    hour = agg_hands[1]
+    second = agg_hands[2] if len(agg_hands) > 2 else None
 
     print(f"Minute hand angle: {minute['angle']:.1f}")
     print(f"Hour hand angle: {hour['angle']:.1f}")
