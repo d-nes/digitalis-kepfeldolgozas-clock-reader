@@ -94,23 +94,38 @@ for idx, cluster in enumerate(clusters):
 
 # Sort by total length descending (minute > hour > second)
 agg_hands = sorted(agg_hands, key=lambda h: h['length'], reverse=False)
+# If 4 clusters, drop the shortest
+if len(agg_hands) == 4:
+    min_length = min(h['length'] for h in agg_hands)
+    agg_hands = [h for h in agg_hands if h['length'] > min_length + 1e-3]  # add small epsilon for float safety
+    print("Dropped shortest cluster.")
+
+# Now assign hands as before
+agg_hands = sorted(agg_hands, key=lambda h: h['length'], reverse=True)
+
 if len(agg_hands) >= 2:
     minute = agg_hands[0]
-    hour = agg_hands[1]
+    hour_candidates = agg_hands[1:]
+    hour = min(hour_candidates, key=lambda h: min(abs(h['angle'] - minute['angle']), 360 - abs(h['angle'] - minute['angle'])))
+    second = None
+    if len(agg_hands) > 2:
+        second_candidates = [h for h in agg_hands[1:] if h != hour]
+        if second_candidates:
+            second = max(second_candidates, key=lambda h: h['length'])
+
     print(f"Minute hand angle: {minute['angle']:.1f}")
     print(f"Hour hand angle: {hour['angle']:.1f}")
-    if len(agg_hands) > 2:
-        second = agg_hands[2]
+    if second:
         print(f"Second hand angle: {second['angle']:.1f}")
 
-        def angle_to_time(angle, divisions):
-            return (angle / 360) * divisions
+    def angle_to_time(angle, divisions):
+        return (angle / 360) * divisions
 
-        minute_value = angle_to_time(minute['angle'], 60)
-        hour_value = angle_to_time(hour['angle'], 12)
-        print(f"Estimated time: {int(hour_value)%12:02d}:{int(minute_value):02d}")
+    minute_value = angle_to_time(minute['angle'], 60)
+    hour_value = angle_to_time(hour['angle'], 12)
+    print(f"Estimated time: {int(hour_value)%12:02d}:{int(minute_value):02d}")
 else:
-    print("Not enough hands detected after clustering.")
+    print("Not enough hands detected after filtering.")
 
 # Show result
 cv2.imshow('Clock Reader', img)
