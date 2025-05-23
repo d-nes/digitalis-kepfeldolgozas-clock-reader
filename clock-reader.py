@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from collections import defaultdict
 
 # Load image
 img = cv2.imread('test-images/faliora.jpg')
@@ -48,6 +49,68 @@ else:
     print("No lines detected.")
 
 print(f"Total kept hand candidates: {len(all_lines)}")
+
+hand_infos = []
+for (x1, y1, x2, y2, length) in all_lines:
+    # Choose the endpoint farther from the center as the tip
+    d1 = np.hypot(x1 - center[0], y1 - center[1])
+    d2 = np.hypot(x2 - center[0], y2 - center[1])
+    tip = (x1, y1) if d1 > d2 else (x2, y2)
+    # Angle: 0 is up, increases clockwise
+    dx = tip[0] - center[0]
+    dy = center[1] - tip[1]
+    angle = np.degrees(np.arctan2(dx, dy)) % 360
+    hand_infos.append({'angle': angle, 'length': length, 'tip': tip})
+    print(f"Hand candidate: angle={angle:.1f}, length={length:.1f}")
+
+def cluster_lines_by_angle(hand_infos, angle_thresh=10):
+    clusters = []
+    used = [False] * len(hand_infos)
+    for i, h in enumerate(hand_infos):
+        if used[i]:
+            continue
+        cluster = [h]
+        used[i] = True
+        for j, h2 in enumerate(hand_infos):
+            if not used[j]:
+                diff = abs(h['angle'] - h2['angle'])
+                diff = min(diff, 360 - diff)
+                if diff < angle_thresh:
+                    cluster.append(h2)
+                    used[j] = True
+        clusters.append(cluster)
+    return clusters
+
+clusters = cluster_lines_by_angle(hand_infos, angle_thresh=10)
+print(f"Found {len(clusters)} clusters.")
+
+# For each cluster, compute average angle and total length
+agg_hands = []
+for idx, cluster in enumerate(clusters):
+    avg_angle = np.mean([h['angle'] for h in cluster])
+    total_length = np.sum([h['length'] for h in cluster])
+    agg_hands.append({'angle': avg_angle, 'length': total_length, 'count': len(cluster)})
+    print(f"Cluster {idx}: avg_angle={avg_angle:.1f}, total_length={total_length:.1f}, count={len(cluster)}")
+
+# Sort by total length descending (minute > hour > second)
+agg_hands = sorted(agg_hands, key=lambda h: h['length'], reverse=False)
+if len(agg_hands) >= 2:
+    minute = agg_hands[0]
+    hour = agg_hands[1]
+    print(f"Minute hand angle: {minute['angle']:.1f}")
+    print(f"Hour hand angle: {hour['angle']:.1f}")
+    if len(agg_hands) > 2:
+        second = agg_hands[2]
+        print(f"Second hand angle: {second['angle']:.1f}")
+
+        def angle_to_time(angle, divisions):
+            return (angle / 360) * divisions
+
+        minute_value = angle_to_time(minute['angle'], 60)
+        hour_value = angle_to_time(hour['angle'], 12)
+        print(f"Estimated time: {int(hour_value)%12:02d}:{int(minute_value):02d}")
+else:
+    print("Not enough hands detected after clustering.")
 
 # Show result
 cv2.imshow('Clock Reader', img)
