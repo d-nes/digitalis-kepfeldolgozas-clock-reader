@@ -45,6 +45,11 @@ else:
 
 # Load and preprocess image
 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+# Apply median filter to reduce salt & pepper noise
+gray = cv2.medianBlur(gray, 5)
+
+# Gaussian blur for general noise reduction
 blur = cv2.GaussianBlur(gray, (7, 7), 0)
 
 # Detect clock face (circle)
