@@ -1,8 +1,49 @@
 import cv2
 import numpy as np
 
-# Load and preprocess image
+def add_salt_pepper_noise(image, amount=0.01, salt_vs_pepper=0.5):
+    """Add salt and pepper noise to image."""
+    noisy = image.copy()
+    num_pixels = image.size * amount
+    # Salt noise
+    num_salt = int(num_pixels * salt_vs_pepper)
+    coords = [np.random.randint(0, i - 1, num_salt) for i in image.shape[:2]]
+    noisy[coords[0], coords[1]] = 255
+    # Pepper noise
+    num_pepper = int(num_pixels * (1.0 - salt_vs_pepper))
+    coords = [np.random.randint(0, i - 1, num_pepper) for i in image.shape[:2]]
+    noisy[coords[0], coords[1]] = 0
+    return noisy
+
+def add_gaussian_noise(image, mean=0, sigma=10):
+    """Add Gaussian noise to image."""
+    gauss = np.random.normal(mean, sigma, image.shape).astype('float32')
+    noisy = image.astype('float32') + gauss
+    noisy = np.clip(noisy, 0, 255).astype('uint8')
+    return noisy
+
+# --- Noise selection UI ---
+print("Noise options:")
+print("  0 - No noise")
+print("  1 - Add salt & pepper noise")
+print("  2 - Add Gaussian noise")
+noise_choice = input("Select noise type (0/1/2): ").strip()
+
 img = cv2.imread('test-images/faliora.jpg')
+if noise_choice == "1":
+    gray_for_noise = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    noisy = add_salt_pepper_noise(gray_for_noise, amount=0.02)
+    img = cv2.cvtColor(noisy, cv2.COLOR_GRAY2BGR)
+    print("Salt & pepper noise added.")
+elif noise_choice == "2":
+    gray_for_noise = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    noisy = add_gaussian_noise(gray_for_noise, sigma=20)
+    img = cv2.cvtColor(noisy, cv2.COLOR_GRAY2BGR)
+    print("Gaussian noise added.")
+else:
+    print("No noise added.")
+
+# Load and preprocess image
 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 blur = cv2.GaussianBlur(gray, (7, 7), 0)
 
