@@ -52,6 +52,9 @@ gray = cv2.medianBlur(gray, 5)
 # Gaussian blur for general noise reduction
 blur = cv2.GaussianBlur(gray, (7, 7), 0)
 
+kernel = np.ones((3,3), np.uint8)
+gray = cv2.morphologyEx(gray, cv2.MORPH_OPEN, kernel)
+
 # Detect clock face (circle)
 circles = cv2.HoughCircles(
     blur, cv2.HOUGH_GRADIENT, dp=1.2, minDist=100,
